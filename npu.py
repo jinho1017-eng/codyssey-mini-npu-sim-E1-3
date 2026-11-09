@@ -48,3 +48,36 @@ def make_cross(n):
 def make_x(n):
     """n x n X 패턴을 생성한다."""
     return [[1 if i == j or i + j == n - 1 else 0 for j in range(n)] for i in range(n)]
+
+
+def flatten(grid):
+    """2차원 리스트를 1차원 리스트(길이 n*n)로 변환한다."""
+    return [value for row in grid for value in row]
+
+
+def compute_mac_score_1d(pattern_flat,filter_flat):
+    """1차원으로 변환된 패턴과 필터로 MAC 점수를 계산한다."""
+    score = 0
+    for idx in range(len(pattern_flat)):
+        score += pattern_flat[idx] * filter_flat[idx]
+    return score
+
+
+def compare_optimization(n, repeats=10):
+    """같은 입력(n x n)에 대해 2차원 방식과 1차원 방식의 평균 연산 시간을 비교한다."""
+    cross = make_cross(n)
+    x = make_x(n)
+    cross_flat = flatten(cross)
+    x_flat = flatten(x)
+
+    start = time.perf_counter()
+    for _ in range(repeats):
+        compute_mac_score(cross, x)
+    time_2d = (time.perf_counter() - start) / repeats * 1000
+
+    start = time.perf_counter()
+    for _ in range(repeats):
+        compute_mac_score_1d(cross_flat, x_flat)
+    time_1d = (time.perf_counter() - start) / repeats * 1000
+
+    return time_2d, time_1d

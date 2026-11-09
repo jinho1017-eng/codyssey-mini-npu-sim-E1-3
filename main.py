@@ -1,5 +1,5 @@
 import json
-from npu import compute_mac_score, judge_scores, measure_mac_time, normalize_label, make_cross, make_x
+from npu import compute_mac_score, judge_scores, measure_mac_time, normalize_label, make_cross, make_x, compare_optimization
 
 
 def read_grid(label, n):
@@ -27,9 +27,26 @@ def read_grid(label, n):
 
 def run_mode1():
     """사용자 입력(3x3) 모드: 필터 A, B, 패턴을 입력받아 MAC 점수를 계산한다."""
-    filter_a = read_grid("필터 A", 3)
-    filter_b = read_grid("필터 B", 3)
-    pattern = read_grid("패턴", 3)
+    use_generated = input("자동 생성된 패턴을 사용하시겠습니까? (y/n): ").strip().lower()
+
+    if use_generated == "y":
+        while True:
+            size_text = input("패턴 크기 N 입력: ").strip()
+            if size_text.isdigit() and int(size_text) >= 1:
+                n = int(size_text)
+                break
+            print("1 이상의 정수를 입력하세요.")
+
+        filter_a = make_cross(n)
+        filter_b = make_x(n)
+        print(f"필터 A(Cross, {n}x{n})와 필터 B(X, {n}x{n})가 자동 생성되었습니다.")
+
+        pattern_choice = input("패턴으로 사용할 모양 선택 (cross/x): ").strip().lower()
+        pattern = make_cross(n) if pattern_choice == "cross" else make_x(n)
+    else:
+        filter_a = read_grid("필터 A", 3)
+        filter_b = read_grid("필터 B", 3)
+        pattern = read_grid("패턴", 3)
 
     score_a = compute_mac_score(pattern, filter_a)
     score_b = compute_mac_score(pattern, filter_b)
@@ -139,6 +156,15 @@ def print_summary(results):
         for pattern_key, passed, reason in results:
             if not passed:
                 print(f"- {pattern_key}: {reason}")
+
+
+def run_optimization_comparison(sizes=(3, 5, 13, 25)):
+    """크기별로 2차원 방식과 1차원 방식의 평균 연산 시간을 표로 비교 출력한다."""
+    print(f"{'크기':<10}{'2차원(ms)':<15}{'1차원(ms)':<15}")
+    print("-" * 40)
+    for n in sizes:
+        time_2d, time_1d = compare_optimization(n)
+        print(f"{n}x{n:<8}{time_2d:<15.3f}{time_1d:<15.3f}")
 
 def main():
     print("=== Mini NPU Simulator ===")
