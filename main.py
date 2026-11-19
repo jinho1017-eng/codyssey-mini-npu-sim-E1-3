@@ -1,5 +1,8 @@
 import json
+from pathlib import Path
 from npu import compute_mac_score, judge_scores, measure_mac_time, normalize_label, make_cross, make_x, compare_optimization
+
+DATA_PATH = Path(__file__).with_name("data.json")
 
 
 def read_grid(label, n):
@@ -41,7 +44,11 @@ def run_mode1():
         filter_b = make_x(n)
         print(f"필터 A(Cross, {n}x{n})와 필터 B(X, {n}x{n})가 자동 생성되었습니다.")
 
-        pattern_choice = input("패턴으로 사용할 모양 선택 (cross/x): ").strip().lower()
+        while True:
+            pattern_choice = input("패턴으로 사용할 모양 선택 (cross/x): ").strip().lower()
+            if pattern_choice in ("cross", "x"):
+                break
+            print("cross 또는 x를 입력하세요.")
         pattern = make_cross(n) if pattern_choice == "cross" else make_x(n)
     else:
         filter_a = read_grid("필터 A", 3)
@@ -64,7 +71,7 @@ def run_mode1():
     print(f"연산 시간(평균/10회): {avg_time:.3f} ms")
 
 
-def load_data(path="data.json"):
+def load_data(path=DATA_PATH):
     """data.json 파일을 읽어서 딕셔너리로 반환한다."""
     with open(path, encoding="utf-8") as f:
         return json.load(f)
@@ -83,30 +90,56 @@ def build_filters(raw_filters):
     return filters
 
 
-def run_mode2(path="data.json"):
+def is_square_grid(grid, size):
+    return isinstance(grid, list) and len(grid) == size and all(
+        isinstance(row, list) and len(row) == size for row in grid
+    )
+
+
+def run_mode2(path=DATA_PATH):
     """data.json 분석 모드: 패턴마다 MAC 판정을 수행하고 PASS/FAIL을 출력한다."""
     raw = load_data(path)
     filters = build_filters(raw["filters"])
 
     results = []
     for pattern_key, pattern_info in raw["patterns"].items():
-        pattern_input = pattern_info["input"]
-        size = int(pattern_key.split("_")[1])
-
         print(f"--- {pattern_key} ---")
+
+        try:
+            size = int(pattern_key.split("_")[1])
+        except (IndexError, ValueError):
+            print("FAIL: 패턴 키 형식이 올바르지 않습니다. (예: size_5_1)")
+            results.append((pattern_key, False, "패턴 키 형식 오류"))
+            continue
+
+        pattern_input = pattern_info["input"]
 
         if size not in filters:
             print(f"FAIL: size_{size} 필터가 없습니다.")
             results.append((pattern_key, False, f"size_{size} 필터 없음"))
             continue
 
-        if len(pattern_input) != size or any(len(row) != size for row in pattern_input):
+        if not is_square_grid(pattern_input, size):
             print("FAIL: 패턴 크기가 필터 크기와 일치하지 않습니다.")
             results.append((pattern_key, False, "패턴 크기가 필터 크기와 일치하지 않음"))
             continue
 
-        cross_score = compute_mac_score(pattern_input, filters[size]["Cross"])
-        x_score = compute_mac_score(pattern_input, filters[size]["X"])
+        cross_filter = filters[size].get("Cross")
+        x_filter = filters[size].get("X")
+        invalid_filters = [
+            label
+            for label, grid in (("Cross", cross_filter), ("X", x_filter))
+            if not is_square_grid(grid, size)
+        ]
+        if invalid_filters:
+            labels = ", ".join(invalid_filters)
+            reason = f"필터 누락 또는 크기 불일치: {labels} (기대 크기: {size}×{size})"
+            print(f"FAIL: {reason}")
+            results.append((pattern_key, False, reason))
+            continue
+
+        cross_score = compute_mac_score(pattern_input, cross_filter)
+        x_score = compute_mac_score(pattern_input, x_filter)
 
         result = judge_scores(cross_score, x_score)
         if result == "A":
@@ -116,7 +149,12 @@ def run_mode2(path="data.json"):
         else:
             verdict = "UNDECIDED"
 
-        expected = normalize_label(pattern_info["expected"])
+        try:
+            expected = normalize_label(pattern_info["expected"])
+        except ValueError as error:
+            print(f"FAIL: {error}")
+            results.append((pattern_key, False, str(error)))
+            continue
 
         print(f"Cross 점수: {cross_score}")
         print(f"X 점수: {x_score}")
@@ -138,7 +176,8 @@ def run_performance_table(sizes=(3, 5, 13, 25)):
         cross = make_cross(n)
         x = make_x(n)
         avg_time = measure_mac_time(cross, x)
-        print(f"{n}x{n:<8}{avg_time:<15.3f}{n * n:<10}")
+        size_label = f"{n}x{n}"
+        print(f"{size_label:<10}{avg_time:<15.3f}{n * n:<10}")
 
 
 def print_summary(results):
@@ -164,7 +203,8 @@ def run_optimization_comparison(sizes=(3, 5, 13, 25)):
     print("-" * 40)
     for n in sizes:
         time_2d, time_1d = compare_optimization(n)
-        print(f"{n}x{n:<8}{time_2d:<15.3f}{time_1d:<15.3f}")
+        size_label = f"{n}x{n}"
+        print(f"{size_label:<10}{time_2d:<15.3f}{time_1d:<15.3f}")
 
 def main():
     print("=== Mini NPU Simulator ===")
