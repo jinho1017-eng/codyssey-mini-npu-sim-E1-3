@@ -28,6 +28,13 @@ def read_grid(label, n):
         return rows
 
 
+def print_grid(title, grid):
+    """저장된 격자를 다시 출력해 입력값이 제대로 저장됐는지 확인시킨다."""
+    print(f"{title} 저장 완료:")
+    for row in grid:
+        print(" ".join(f"{value:g}" for value in row))
+
+
 def run_mode1():
     """사용자 입력(3x3) 모드: 필터 A, B, 패턴을 입력받아 MAC 점수를 계산한다."""
     use_generated = input("자동 생성된 패턴을 사용하시겠습니까? (y/n): ").strip().lower()
@@ -53,6 +60,8 @@ def run_mode1():
     else:
         filter_a = read_grid("필터 A", 3)
         filter_b = read_grid("필터 B", 3)
+        print_grid("필터 A", filter_a)
+        print_grid("필터 B", filter_b)
         pattern = read_grid("패턴", 3)
 
     score_a = compute_mac_score(pattern, filter_a)
@@ -69,6 +78,7 @@ def run_mode1():
 
     avg_time = measure_mac_time(pattern, filter_a)
     print(f"연산 시간(평균/10회): {avg_time:.3f} ms")
+    print(f"연산 횟수(N²): {len(pattern) ** 2}")
 
 
 def load_data(path=DATA_PATH):
@@ -110,6 +120,16 @@ def run_mode2(path=DATA_PATH):
         except (IndexError, ValueError):
             print("FAIL: 패턴 키 형식이 올바르지 않습니다. (예: size_5_1)")
             results.append((pattern_key, False, "패턴 키 형식 오류"))
+            continue
+
+        missing = [
+            key for key in ("input", "expected")
+            if not isinstance(pattern_info, dict) or key not in pattern_info
+        ]
+        if missing:
+            names = ", ".join(missing)
+            print(f"FAIL: 패턴에 필요한 항목이 없습니다 ({names}).")
+            results.append((pattern_key, False, f"항목 누락: {names}"))
             continue
 
         pattern_input = pattern_info["input"]
@@ -222,7 +242,16 @@ def main():
     if choice == "1":
         run_mode1()
     else:
-        results = run_mode2()
+        try:
+            results = run_mode2()
+        except KeyError as error:
+            print(f"data.json에 필요한 항목이 없습니다: {error}")
+            print("data.json을 확인하거나, 프로젝트 폴더에서 python generate_data.py로 다시 만들어 주세요.")
+            return
+        except (OSError, ValueError) as error:
+            print(f"data.json을 처리할 수 없습니다: {error}")
+            print("data.json을 확인하거나, 프로젝트 폴더에서 python generate_data.py로 다시 만들어 주세요.")
+            return
         run_performance_table()
         print_summary(results)
 
